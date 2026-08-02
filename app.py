@@ -7,7 +7,7 @@ from ultralytics import YOLO
 import tempfile
 
 # ---------- CONFIG ----------
-MODEL_PATH = r"C:\Users\Hemanth\fire-and-smoke-detection-yolov8\weights\best.pt"         # <-- put YOUR model's actual path here
+MODEL_PATH = "fire-and-smoke-detection-yolov8/weights/best.pt"  # <-- put YOUR model's actual path here
 VALID_USERS = {
     "admin": "fire123",
     "teacher": "demo2024",
