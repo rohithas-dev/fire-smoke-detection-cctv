@@ -6,3 +6,4 @@ matplotlib
 torch
 torchvision
 dill
+reportlab

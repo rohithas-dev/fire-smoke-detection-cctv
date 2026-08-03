@@ -188,15 +188,15 @@ def display_results(data):
     first_fire_time = data["first_fire_time"]
     keyframes = data["keyframes"]
 
-    st.header("📋 Detection Report")
+    st.header("Detection Report")
 
     if first_fire_frame is not None:
-        st.error(f"🔥 Fire/Smoke first detected at frame {first_fire_frame} (~{first_fire_time:.1f} sec into video)")
+        st.error(f"Fire/Smoke first detected at frame {first_fire_frame} (~{first_fire_time:.1f} sec into video)")
         if "onset" in keyframes:
             st.image(cv2.cvtColor(keyframes["onset"], cv2.COLOR_BGR2RGB),
                       caption="Frame where fire/smoke was first detected", width=500)
     else:
-        st.success("✅ No fire or smoke detected in this video.")
+        st.success("No fire or smoke detected in this video.")
 
     total_frames = len(df)
     frames_with_fire = (df["fire_detections"] > 0).sum()
@@ -239,8 +239,73 @@ def display_results(data):
     csv = df.to_csv(index=False)
     st.download_button("Download Report as CSV", csv, "fire_detection_report.csv", "text/csv")
 
+    pdf_bytes = generate_pdf_report(df, first_fire_frame, first_fire_time,
+                                     total_frames, frames_with_fire, frames_with_smoke,
+                                     fig1, fig2, fig3)
+    st.download_button("Download Report as PDF", pdf_bytes, "fire_detection_report.pdf", "application/pdf")
+
+
+def generate_pdf_report(df, first_fire_frame, first_fire_time, total_frames,
+                         frames_with_fire, frames_with_smoke, fig1, fig2, fig3):
+    import io
+    from reportlab.lib.pagesizes import letter
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib import colors
+    from reportlab.lib.units import inch
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.6*inch, bottomMargin=0.6*inch)
+    styles = getSampleStyleSheet()
+    story = []
+
+    story.append(Paragraph("CCTV Fire and Smoke Detection Report", styles['Title']))
+    story.append(Spacer(1, 12))
+
+    if first_fire_frame is not None:
+        story.append(Paragraph(
+            f"Fire or smoke was first detected at frame {first_fire_frame} "
+            f"(approximately {first_fire_time:.1f} seconds into the video).",
+            styles['Normal']
+        ))
+    else:
+        story.append(Paragraph("No fire or smoke was detected in this video.", styles['Normal']))
+
+    story.append(Spacer(1, 16))
+
+    summary_data = [
+        ["Metric", "Value"],
+        ["Frames Analyzed", str(total_frames)],
+        ["Frames with Fire", str(frames_with_fire)],
+        ["Frames with Smoke", str(frames_with_smoke)],
+    ]
+    table = Table(summary_data, colWidths=[200, 200])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#ff5722")),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    story.append(table)
+    story.append(Spacer(1, 20))
+
+    for fig, caption in [(fig1, "Detection Confidence Over Time"),
+                          (fig2, "Fire vs Smoke Detections Over Time"),
+                          (fig3, "Overall Summary")]:
+        img_buffer = io.BytesIO()
+        fig.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+        img_buffer.seek(0)
+        story.append(Paragraph(caption, styles['Heading2']))
+        story.append(Image(img_buffer, width=6*inch, height=2.5*inch))
+        story.append(Spacer(1, 14))
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer.getvalue()
 def main_app():
-    st.title("🔥 CCTV Fire & Smoke Detection Dashboard")
+    st.title(" CCTV Fire & Smoke Detection Dashboard")
     st.write(f"Logged in as **{st.session_state.current_user}**")
     if st.button("Logout"):
         st.session_state.logged_in = False
