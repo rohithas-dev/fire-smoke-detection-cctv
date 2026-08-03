@@ -5,6 +5,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from ultralytics import YOLO
 import tempfile
+import os
+import subprocess
 
 # ---------- CONFIG ----------
 MODEL_PATH = "fire-and-smoke-detection-yolov8/weights/best.pt"
@@ -151,12 +153,47 @@ def draw_detections(frame, boxes, names):
     annotated = frame.copy()
     for box in boxes:
         x1, y1, x2, y2 = map(int, box["xyxy"])
-        color = (0, 0, 255) if box["label"] == "fire" else (160, 160, 160)
+        color = (0, 0, 255) if box["label"] == "fire" else (255, 165, 0)
         label = f'{box["label"]} {box["conf"]:.2f}'
         cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
         cv2.putText(annotated, label, (x1, max(y1 - 8, 15)),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
     return annotated
+
+
+def convert_to_h264(input_path):
+    """Convert OpenCV generated mp4 (mp4v codec) to H.264 format so modern browsers can display it in HTML5 video element."""
+    h264_path = tempfile.NamedTemporaryFile(delete=False, suffix="_h264.mp4").name
+    
+    # 1. Try standard ffmpeg system binary
+    try:
+        cmd = [
+            "ffmpeg", "-y", "-i", input_path,
+            "-vcodec", "libx264", "-pix_fmt", "yuv420p",
+            "-acodec", "aac", h264_path
+        ]
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if res.returncode == 0 and os.path.exists(h264_path) and os.path.getsize(h264_path) > 0:
+            return h264_path
+    except Exception:
+        pass
+
+    # 2. Try imageio_ffmpeg if installed in environment
+    try:
+        import imageio_ffmpeg
+        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+        cmd = [
+            ffmpeg_exe, "-y", "-i", input_path,
+            "-vcodec", "libx264", "-pix_fmt", "yuv420p",
+            "-acodec", "aac", h264_path
+        ]
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if res.returncode == 0 and os.path.exists(h264_path) and os.path.getsize(h264_path) > 0:
+            return h264_path
+    except Exception:
+        pass
+
+    return input_path
 
 
 def process_video(video_path, model):
@@ -175,9 +212,9 @@ def process_video(video_path, model):
     scrub_frames = []
     last_boxes = []
 
-    annotated_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4").name
+    raw_annotated_path = tempfile.NamedTemporaryFile(delete=False, suffix="_raw.mp4").name
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    writer = cv2.VideoWriter(annotated_path, fourcc, fps, (width, height))
+    writer = cv2.VideoWriter(raw_annotated_path, fourcc, fps, (width, height))
 
     while True:
         ret, frame = cap.read()
@@ -237,6 +274,9 @@ def process_video(video_path, model):
     cap.release()
     writer.release()
 
+    # Transcode video to H.264 so standard web browsers can render it smoothly in st.video()
+    playable_video_path = convert_to_h264(raw_annotated_path)
+
     df = pd.DataFrame(records)
     return {
         "df": df,
@@ -246,7 +286,7 @@ def process_video(video_path, model):
         "first_smoke_time": first_smoke_time,
         "keyframes": keyframes,
         "scrub_frames": scrub_frames,
-        "annotated_video_path": annotated_path,
+        "annotated_video_path": playable_video_path,
     }
 
 
@@ -293,6 +333,26 @@ def build_narrative(first_fire_frame, first_fire_time, first_smoke_frame, first_
     return " ".join(parts)
 
 
+def style_matplotlib_figure(fig, ax, title, xlabel, ylabel):
+    """Apply rich dark theme and sleek styling to matplotlib figures."""
+    fig.patch.set_facecolor("#0e1117")
+    ax.set_facecolor("#161b26")
+    
+    # Title and axis labels
+    ax.set_title(title, color="#ffffff", fontsize=13, fontweight="bold", pad=12)
+    ax.set_xlabel(xlabel, color="#a0a0c0", fontsize=10, labelpad=8)
+    ax.set_ylabel(ylabel, color="#a0a0c0", fontsize=10, labelpad=8)
+    
+    # Ticks & Grid
+    ax.tick_params(colors="#a0a0c0", labelsize=9)
+    ax.grid(True, linestyle="--", alpha=0.25, color="#505568")
+    
+    # Spines border color
+    for spine in ax.spines.values():
+        spine.set_color("#2d3345")
+        spine.set_linewidth(1.2)
+
+
 def display_results(data):
     df = data["df"]
     first_fire_frame = data["first_fire_frame"]
@@ -321,9 +381,15 @@ def display_results(data):
     col3.metric("Frames with Smoke", frames_with_smoke)
 
     st.subheader("Live Detection Tracking")
-    st.video(annotated_video_path)
-    st.caption("Bounding boxes track fire/smoke detections throughout the footage. If it doesn't "
-               "play inline, use the download button below to view it locally.")
+    # Stream bytes to guarantee HTML5 video playback in Streamlit
+    try:
+        with open(annotated_video_path, "rb") as video_file:
+            video_bytes = video_file.read()
+            st.video(video_bytes, format="video/mp4")
+    except Exception:
+        st.video(annotated_video_path)
+
+    st.caption("Bounding boxes track fire/smoke detections throughout the footage.")
     with open(annotated_video_path, "rb") as f:
         st.download_button("Download Annotated Video", f, "annotated_detection.mp4", "video/mp4")
 
@@ -333,22 +399,36 @@ def display_results(data):
         chosen = scrub_frames[idx]
         st.image(chosen["image"], caption=f"Frame {chosen['frame']} (~{chosen['time_sec']:.1f}s)", width=500)
 
+    # Vibrant Colored Graph 1: Detection Confidence Over Time
     st.subheader("Detection Confidence Over Time")
-    fig1, ax1 = plt.subplots(figsize=(10, 4))
-    ax1.plot(df["time_sec"], df["max_confidence"], color="red", marker="o", markersize=3)
-    ax1.set_xlabel("Time (seconds)")
-    ax1.set_ylabel("Max Confidence")
-    ax1.grid(True, alpha=0.3)
+    fig1, ax1 = plt.subplots(figsize=(10, 4.2))
+    style_matplotlib_figure(fig1, ax1, "Detection Confidence Progression", "Time (seconds)", "Max Confidence Score")
+    
+    if not df.empty:
+        # Gradient area fill under curve with vibrant fiery red/orange line
+        ax1.plot(df["time_sec"], df["max_confidence"], color="#ff4500", linewidth=2.5, label="Max Confidence", marker="o", markersize=4, mfc="#ffaa00", mec="#ff4500")
+        ax1.fill_between(df["time_sec"], df["max_confidence"], color="#ff4500", alpha=0.22)
+        ax1.set_ylim(-0.05, 1.05)
+    
     st.pyplot(fig1)
 
+    # Vibrant Colored Graph 2: Fire vs Smoke Detections Over Time
     st.subheader("Fire vs Smoke Detections Over Time")
-    fig2, ax2 = plt.subplots(figsize=(10, 4))
-    ax2.plot(df["time_sec"], df["fire_detections"], label="Fire", color="orangered")
-    ax2.plot(df["time_sec"], df["smoke_detections"], label="Smoke", color="gray")
-    ax2.set_xlabel("Time (seconds)")
-    ax2.set_ylabel("Number of Detections")
-    ax2.legend()
-    ax2.grid(True, alpha=0.3)
+    fig2, ax2 = plt.subplots(figsize=(10, 4.2))
+    style_matplotlib_figure(fig2, ax2, "Fire vs Smoke Frequency Over Time", "Time (seconds)", "Number of Bounding Boxes")
+    
+    if not df.empty:
+        # Fire line (Vibrant Flame Orange/Red)
+        ax2.plot(df["time_sec"], df["fire_detections"], label="Fire", color="#ff5722", linewidth=2.5, marker="s", markersize=4, mfc="#ff8a65")
+        ax2.fill_between(df["time_sec"], df["fire_detections"], color="#ff5722", alpha=0.18)
+        
+        # Smoke line (Vibrant Cyan / Smoke Blue)
+        ax2.plot(df["time_sec"], df["smoke_detections"], label="Smoke", color="#00e5ff", linewidth=2.5, marker="o", markersize=4, mfc="#80d8ff")
+        ax2.fill_between(df["time_sec"], df["smoke_detections"], color="#00e5ff", alpha=0.15)
+        
+        legend = ax2.legend(facecolor="#1e2433", edgecolor="#3a4259", labelcolor="#ffffff", fontsize=10)
+        legend.get_frame().set_alpha(0.9)
+    
     st.pyplot(fig2)
 
     with st.expander("View raw detection data"):
@@ -409,7 +489,7 @@ def generate_pdf_report(df, first_fire_frame, first_fire_time, first_smoke_frame
     for fig, caption in [(fig1, "Detection Confidence Over Time"),
                           (fig2, "Fire vs Smoke Detections Over Time")]:
         img_buffer = io.BytesIO()
-        fig.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+        fig.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight', facecolor=fig.get_facecolor())
         img_buffer.seek(0)
         story.append(Paragraph(caption, styles['Heading2']))
         story.append(Image(img_buffer, width=6*inch, height=2.5*inch))
