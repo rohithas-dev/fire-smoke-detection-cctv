@@ -25,17 +25,20 @@ if "logged_in" not in st.session_state:
 def login_page():
     st.markdown("""
         <style>
-        .stApp {
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-        }
+       .stApp {
+    background: #000000;
+}
         
         #bonfire-video {
-            width: 100%;
-            max-width: 320px;
-            border-radius: 12px;
-            filter: drop-shadow(0 0 30px rgba(255, 100, 0, 0.6));
-            transition: opacity 0.6s ease, filter 0.6s ease;
-        }
+    width: 100%;
+    max-width: 320px;
+    border-radius: 12px;
+    transition: opacity 0.6s ease;
+}
+
+#bonfire-video.out {
+    opacity: 0.15;
+}
         
         #bonfire-video.out {
             opacity: 0.15;
@@ -57,13 +60,12 @@ def login_page():
             font-size: 14px;
             margin-bottom: 20px;
         }
-        
-        div[data-testid="stTextInput"] input {
-            background-color: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 87, 34, 0.3);
-            border-radius: 8px;
-            color: white;
-        }
+       div[data-testid="stTextInput"] input {
+    background-color: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 87, 34, 0.3);
+    border-radius: 8px;
+    color: black;
+}
         
         div[data-testid="stTextInput"] input:focus {
             border: 1px solid #ff5722;
