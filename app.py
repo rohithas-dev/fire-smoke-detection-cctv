@@ -31,25 +31,32 @@ def login_page():
         
         @keyframes flicker {
             0%, 100% { transform: scale(1) rotate(-2deg); opacity: 1; }
-            25% { transform: scale(1.05) rotate(2deg); opacity: 0.9; }
-            50% { transform: scale(0.95) rotate(-1deg); opacity: 1; }
-            75% { transform: scale(1.03) rotate(1deg); opacity: 0.95; }
+            25% { transform: scale(1.08) rotate(3deg); opacity: 0.85; }
+            50% { transform: scale(0.92) rotate(-2deg); opacity: 1; }
+            75% { transform: scale(1.05) rotate(2deg); opacity: 0.9; }
         }
         
-        .fire-icon {
-            font-size: 80px;
+        #bonfire {
+            font-size: 120px;
             text-align: center;
             display: block;
-            animation: flicker 1.5s ease-in-out infinite;
-            filter: drop-shadow(0 0 20px rgba(255, 100, 0, 0.6));
+            animation: flicker 1s ease-in-out infinite;
+            filter: drop-shadow(0 0 30px rgba(255, 100, 0, 0.7));
+            transition: opacity 0.6s ease, filter 0.6s ease;
+        }
+        
+        #bonfire.out {
+            animation: none;
+            opacity: 0.15;
+            filter: grayscale(100%) drop-shadow(none);
+            transform: scale(0.9);
         }
         
         .login-title {
             text-align: center;
             color: #ffffff;
-            font-size: 36px;
+            font-size: 30px;
             font-weight: 700;
-            margin-top: 10px;
             margin-bottom: 5px;
             text-shadow: 0 0 10px rgba(255, 87, 34, 0.5);
         }
@@ -57,8 +64,8 @@ def login_page():
         .login-subtitle {
             text-align: center;
             color: #a0a0c0;
-            font-size: 16px;
-            margin-bottom: 30px;
+            font-size: 14px;
+            margin-bottom: 20px;
         }
         
         div[data-testid="stTextInput"] input {
@@ -81,29 +88,24 @@ def login_page():
             padding: 10px 30px;
             font-weight: 600;
             width: 100%;
-            transition: all 0.3s ease;
         }
         
-        .stButton button:hover {
-            box-shadow: 0 0 20px rgba(255, 87, 34, 0.6);
-            transform: translateY(-2px);
-        }
-        
-        label {
-            color: #d0d0e0 !important;
-        }
+        label { color: #d0d0e0 !important; }
         </style>
-        
-        <div class="fire-icon">🔥</div>
-        <div class="login-title">CCTV Fire & Smoke Detection</div>
-        <div class="login-subtitle">Real-time monitoring powered by YOLOv8</div>
     """, unsafe_allow_html=True)
 
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
+    left_col, right_col = st.columns([1, 1.3])
+
+    with left_col:
+        st.markdown('<div id="bonfire">🔥</div>', unsafe_allow_html=True)
+
+    with right_col:
+        st.markdown('<div class="login-title">CCTV Fire & Smoke Detection</div>', unsafe_allow_html=True)
+        st.markdown('<div class="login-subtitle">Real-time monitoring powered by YOLOv8</div>', unsafe_allow_html=True)
+
         username = st.text_input("Username", placeholder="Enter username")
-        password = st.text_input("Password", type="password", placeholder="Enter password")
-        
+        password = st.text_input("Password", type="password", placeholder="Enter password", key="password_field")
+
         if st.button("Login"):
             if username in VALID_USERS and VALID_USERS[username] == password:
                 st.session_state.logged_in = True
@@ -111,11 +113,28 @@ def login_page():
                 st.rerun()
             else:
                 st.error("Invalid username or password")
-        
+
         st.markdown(
-            "<p style='text-align:center; color:#808090; font-size:13px; margin-top:20px;'>Demo credentials: admin / fire123</p>",
+            "<p style='text-align:center; color:#808090; font-size:12px; margin-top:15px;'>Demo credentials: admin / fire123</p>",
             unsafe_allow_html=True
         )
+
+    st.components.v1.html("""
+        <script>
+        const doc = window.parent.document;
+        function attachListener() {
+            const passwordInputs = doc.querySelectorAll('input[type="password"]');
+            const bonfire = doc.getElementById('bonfire');
+            if (passwordInputs.length > 0 && bonfire) {
+                passwordInputs[0].addEventListener('focus', () => bonfire.classList.add('out'));
+                passwordInputs[0].addEventListener('blur', () => bonfire.classList.remove('out'));
+            } else {
+                setTimeout(attachListener, 300);
+            }
+        }
+        attachListener();
+        </script>
+    """, height=0)
 @st.cache_resource
 def load_model():
     return YOLO(MODEL_PATH)
