@@ -7,14 +7,17 @@ from ultralytics import YOLO
 import tempfile
 
 # ---------- CONFIG ----------
-MODEL_PATH = "fire-and-smoke-detection-yolov8/weights/best.pt"  # <-- put YOUR model's actual path here
+MODEL_PATH = "fire-and-smoke-detection-yolov8/weights/best.pt"
 VALID_USERS = {
     "admin": "fire123",
     "teacher": "demo2024",
     "guest": "guest123"
 }
-FRAME_SKIP = 5                    # process every 5th frame (speeds things up)
+FRAME_SKIP = 5
 CONF_THRESHOLD = 0.4
+EMERGENCY_FIRE_NUMBER = "101"       # India Fire Services
+EMERGENCY_GENERAL_NUMBER = "112"   # India National Emergency Number
+MAX_SCRUB_FRAMES = 24              # cap stored frames for the scrub viewer (memory safety)
 # -----------------------------
 
 st.set_page_config(page_title="Fire & Smoke CCTV Detection", layout="wide")
@@ -22,11 +25,12 @@ st.set_page_config(page_title="Fire & Smoke CCTV Detection", layout="wide")
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
+
 def login_page():
     st.markdown("""
         <style>
         .stApp {
-            background: #000000;
+            background: radial-gradient(circle at top left, #1a1a2e 0%, #0d0d14 60%, #000000 100%);
         }
 
         #bonfire-video {
@@ -34,43 +38,49 @@ def login_page():
             max-width: 450px;
             height: 550px;
             object-fit: cover;
-            border-radius: 12px;
+            border-radius: 16px;
+            box-shadow: 0 0 40px rgba(255, 87, 34, 0.25);
             transition: opacity 0.6s ease;
         }
-
-        #bonfire-video.out {
-            opacity: 0.15;
-        }
+        #bonfire-video.out { opacity: 0.15; }
 
         .login-title {
             text-align: center;
             color: #ffffff;
-            font-size: 30px;
-            font-weight: 700;
-            margin-bottom: 5px;
-            text-shadow: 0 0 10px rgba(255, 87, 34, 0.5);
+            font-size: 32px;
+            font-weight: 800;
+            margin-bottom: 4px;
+            letter-spacing: 0.5px;
+            text-shadow: 0 0 12px rgba(255, 87, 34, 0.6);
         }
-
         .login-subtitle {
             text-align: center;
-            color: #a0a0c0;
+            color: #9a9ac0;
             font-size: 14px;
-            margin-bottom: 20px;
+            margin-bottom: 22px;
+        }
+
+        div[data-testid="stForm"] {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 87, 34, 0.25);
+            border-radius: 18px;
+            padding: 30px 34px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+            backdrop-filter: blur(6px);
         }
 
         div[data-testid="stTextInput"] input {
             background-color: rgba(255, 255, 255, 0.08);
             border: 1px solid rgba(255, 87, 34, 0.3);
             border-radius: 8px;
-            color: black;
+            color: #f2f2f2;
         }
-
         div[data-testid="stTextInput"] input:focus {
             border: 1px solid #ff5722;
             box-shadow: 0 0 10px rgba(255, 87, 34, 0.4);
         }
 
-        .stButton button {
+        div[data-testid="stForm"] .stButton button {
             background: linear-gradient(135deg, #ff5722, #ff9800);
             color: white;
             border: none;
@@ -78,7 +88,9 @@ def login_page():
             padding: 10px 30px;
             font-weight: 600;
             width: 100%;
+            transition: transform 0.15s ease;
         }
+        div[data-testid="stForm"] .stButton button:hover { transform: translateY(-1px); }
 
         label { color: #d0d0e0 !important; }
         </style>
@@ -97,16 +109,18 @@ def login_page():
         st.markdown('<div class="login-title">CCTV Fire & Smoke Detection</div>', unsafe_allow_html=True)
         st.markdown('<div class="login-subtitle">Real-time monitoring powered by YOLOv8</div>', unsafe_allow_html=True)
 
-        username = st.text_input("Username", placeholder="Enter username")
-        password = st.text_input("Password", placeholder="Enter password", key="password_field")
+        with st.form("login_form"):
+            username = st.text_input("Username", placeholder="Enter username")
+            password = st.text_input("Password", placeholder="Enter password", type="password")
+            submitted = st.form_submit_button("Login")
 
-        if st.button("Login"):
-            if username in VALID_USERS and VALID_USERS[username] == password:
-                st.session_state.logged_in = True
-                st.session_state.current_user = username
-                st.rerun()
-            else:
-                st.error("Invalid username or password")
+            if submitted:
+                if username in VALID_USERS and VALID_USERS[username] == password:
+                    st.session_state.logged_in = True
+                    st.session_state.current_user = username
+                    st.rerun()
+                else:
+                    st.error("Invalid username or password")
 
         st.markdown(
             "<p style='text-align:center; color:#808090; font-size:12px; margin-top:15px;'>Demo credentials: admin / fire123</p>",
@@ -135,18 +149,45 @@ def login_page():
         attachListener();
         </script>
     """, height=0)
+
+
 @st.cache_resource
 def load_model():
     return YOLO(MODEL_PATH)
 
+
+def draw_detections(frame, boxes, names):
+    """Draw persisted bounding boxes on a frame (used for frames between YOLO samples too)."""
+    annotated = frame.copy()
+    for box in boxes:
+        x1, y1, x2, y2 = map(int, box["xyxy"])
+        color = (0, 0, 255) if box["label"] == "fire" else (160, 160, 160)
+        label = f'{box["label"]} {box["conf"]:.2f}'
+        cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
+        cv2.putText(annotated, label, (x1, max(y1 - 8, 15)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+    return annotated
+
+
 def process_video(video_path, model):
     cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS) or 25
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
     frame_idx = 0
     records = []
     first_fire_frame = None
     first_fire_time = None
+    first_smoke_frame = None
+    first_smoke_time = None
     keyframes = {}
+    scrub_frames = []
+    last_boxes = []
+
+    annotated_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4").name
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    writer = cv2.VideoWriter(annotated_path, fourcc, fps, (width, height))
 
     while True:
         ret, frame = cap.read()
@@ -162,6 +203,15 @@ def process_video(video_path, model):
             smoke_count = sum(1 for c in boxes.cls if model.names[int(c)] == "smoke")
             max_conf = float(boxes.conf.max()) if len(boxes) > 0 else 0.0
 
+            last_boxes = [
+                {
+                    "xyxy": boxes.xyxy[i].tolist(),
+                    "label": model.names[int(boxes.cls[i])],
+                    "conf": float(boxes.conf[i])
+                }
+                for i in range(len(boxes))
+            ]
+
             records.append({
                 "frame": frame_idx,
                 "time_sec": round(timestamp, 2),
@@ -170,42 +220,128 @@ def process_video(video_path, model):
                 "max_confidence": max_conf
             })
 
-            if (fire_count > 0 or smoke_count > 0) and first_fire_frame is None:
+            if fire_count > 0 and first_fire_frame is None:
                 first_fire_frame = frame_idx
                 first_fire_time = timestamp
-                keyframes["onset"] = results[0].plot()
+
+            if smoke_count > 0 and first_smoke_frame is None:
+                first_smoke_frame = frame_idx
+                first_smoke_time = timestamp
+
+            if (fire_count > 0 or smoke_count > 0) and len(scrub_frames) < MAX_SCRUB_FRAMES:
+                annotated_preview = draw_detections(frame, last_boxes, model.names)
+                scrub_frames.append({
+                    "frame": frame_idx,
+                    "time_sec": round(timestamp, 2),
+                    "image": cv2.cvtColor(annotated_preview, cv2.COLOR_BGR2RGB)
+                })
+                if first_fire_frame == frame_idx or "onset" not in keyframes:
+                    keyframes["onset"] = cv2.cvtColor(annotated_preview, cv2.COLOR_BGR2RGB)
+
+        # Draw the last known boxes on every frame so tracking looks continuous, not just every Nth frame
+        annotated_frame = draw_detections(frame, last_boxes, model.names)
+        writer.write(annotated_frame)
 
         frame_idx += 1
 
     cap.release()
+    writer.release()
+
     df = pd.DataFrame(records)
-    return {"df": df, "first_fire_frame": first_fire_frame,
-            "first_fire_time": first_fire_time, "keyframes": keyframes}
+    return {
+        "df": df,
+        "first_fire_frame": first_fire_frame,
+        "first_fire_time": first_fire_time,
+        "first_smoke_frame": first_smoke_frame,
+        "first_smoke_time": first_smoke_time,
+        "keyframes": keyframes,
+        "scrub_frames": scrub_frames,
+        "annotated_video_path": annotated_path,
+    }
+
+
+def build_narrative(first_fire_frame, first_fire_time, first_smoke_frame, first_smoke_time, df):
+    if first_fire_frame is None and first_smoke_frame is None:
+        return ("No fire or smoke activity was detected in the footage. "
+                "The scene remained clear throughout the recording.")
+
+    parts = []
+    if first_smoke_frame is not None and first_fire_frame is not None:
+        if first_smoke_time < first_fire_time:
+            gap = first_fire_time - first_smoke_time
+            parts.append(
+                f"Smoke was first observed at approximately {first_smoke_time:.1f} seconds into the "
+                f"footage, roughly {gap:.1f} seconds before visible flame appeared at "
+                f"{first_fire_time:.1f} seconds. This pattern is consistent with a smoldering onset "
+                f"that progressed into open flame rather than a sudden flash fire."
+            )
+        else:
+            parts.append(
+                f"Flame was detected at {first_fire_time:.1f} seconds, with smoke becoming visible "
+                f"shortly after at {first_smoke_time:.1f} seconds — consistent with a fast-developing "
+                f"ignition rather than a slow smolder."
+            )
+    elif first_fire_frame is not None:
+        parts.append(
+            f"Flame was detected starting at approximately {first_fire_time:.1f} seconds into the "
+            f"footage, with no distinct smoke phase captured beforehand."
+        )
+    elif first_smoke_frame is not None:
+        parts.append(
+            f"Smoke was detected starting at approximately {first_smoke_time:.1f} seconds into the "
+            f"footage. No open flame was confirmed by the model in this recording."
+        )
+
+    if not df.empty:
+        peak_row = df.loc[df["max_confidence"].idxmax()]
+        parts.append(
+            f"Detection confidence peaked at {peak_row['max_confidence']:.2f} around "
+            f"{peak_row['time_sec']:.1f} seconds, marking the clearest visual evidence of fire or "
+            f"smoke captured in the footage."
+        )
+
+    return " ".join(parts)
+
 
 def display_results(data):
     df = data["df"]
     first_fire_frame = data["first_fire_frame"]
     first_fire_time = data["first_fire_time"]
-    keyframes = data["keyframes"]
+    first_smoke_frame = data["first_smoke_frame"]
+    first_smoke_time = data["first_smoke_time"]
+    scrub_frames = data["scrub_frames"]
+    annotated_video_path = data["annotated_video_path"]
 
     st.header("Detection Report")
 
     if first_fire_frame is not None:
-        st.error(f"Fire/Smoke first detected at frame {first_fire_frame} (~{first_fire_time:.1f} sec into video)")
-        if "onset" in keyframes:
-            st.image(cv2.cvtColor(keyframes["onset"], cv2.COLOR_BGR2RGB),
-                      caption="Frame where fire/smoke was first detected", width=500)
+        st.error(f"Fire first detected at frame {first_fire_frame} (~{first_fire_time:.1f} sec into video)")
+    elif first_smoke_frame is not None:
+        st.warning(f"Smoke first detected at frame {first_smoke_frame} (~{first_smoke_time:.1f} sec into video)")
     else:
         st.success("No fire or smoke detected in this video.")
 
     total_frames = len(df)
-    frames_with_fire = (df["fire_detections"] > 0).sum()
-    frames_with_smoke = (df["smoke_detections"] > 0).sum()
+    frames_with_fire = int((df["fire_detections"] > 0).sum()) if not df.empty else 0
+    frames_with_smoke = int((df["smoke_detections"] > 0).sum()) if not df.empty else 0
 
     col1, col2, col3 = st.columns(3)
     col1.metric("Frames Analyzed", total_frames)
     col2.metric("Frames with Fire", frames_with_fire)
     col3.metric("Frames with Smoke", frames_with_smoke)
+
+    st.subheader("Live Detection Tracking")
+    st.video(annotated_video_path)
+    st.caption("Bounding boxes track fire/smoke detections throughout the footage. If it doesn't "
+               "play inline, use the download button below to view it locally.")
+    with open(annotated_video_path, "rb") as f:
+        st.download_button("Download Annotated Video", f, "annotated_detection.mp4", "video/mp4")
+
+    if scrub_frames:
+        st.subheader("Scrub Through Detections")
+        idx = st.slider("Detection #", 0, len(scrub_frames) - 1, 0)
+        chosen = scrub_frames[idx]
+        st.image(chosen["image"], caption=f"Frame {chosen['frame']} (~{chosen['time_sec']:.1f}s)", width=500)
 
     st.subheader("Detection Confidence Over Time")
     fig1, ax1 = plt.subplots(figsize=(10, 4))
@@ -225,14 +361,6 @@ def display_results(data):
     ax2.grid(True, alpha=0.3)
     st.pyplot(fig2)
 
-    st.subheader("Overall Summary")
-    fig3, ax3 = plt.subplots(figsize=(6, 4))
-    categories = ["Fire Frames", "Smoke Frames", "Clear Frames"]
-    values = [frames_with_fire, frames_with_smoke, total_frames - frames_with_fire - frames_with_smoke]
-    ax3.bar(categories, values, color=["orangered", "gray", "green"])
-    ax3.set_ylabel("Number of Frames")
-    st.pyplot(fig3)
-
     with st.expander("View raw detection data"):
         st.dataframe(df)
 
@@ -240,13 +368,14 @@ def display_results(data):
     st.download_button("Download Report as CSV", csv, "fire_detection_report.csv", "text/csv")
 
     pdf_bytes = generate_pdf_report(df, first_fire_frame, first_fire_time,
+                                     first_smoke_frame, first_smoke_time,
                                      total_frames, frames_with_fire, frames_with_smoke,
-                                     fig1, fig2, fig3)
+                                     fig1, fig2)
     st.download_button("Download Report as PDF", pdf_bytes, "fire_detection_report.pdf", "application/pdf")
 
 
-def generate_pdf_report(df, first_fire_frame, first_fire_time, total_frames,
-                         frames_with_fire, frames_with_smoke, fig1, fig2, fig3):
+def generate_pdf_report(df, first_fire_frame, first_fire_time, first_smoke_frame, first_smoke_time,
+                         total_frames, frames_with_fire, frames_with_smoke, fig1, fig2):
     import io
     from reportlab.lib.pagesizes import letter
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle
@@ -262,15 +391,11 @@ def generate_pdf_report(df, first_fire_frame, first_fire_time, total_frames,
     story.append(Paragraph("CCTV Fire and Smoke Detection Report", styles['Title']))
     story.append(Spacer(1, 12))
 
-    if first_fire_frame is not None:
-        story.append(Paragraph(
-            f"Fire or smoke was first detected at frame {first_fire_frame} "
-            f"(approximately {first_fire_time:.1f} seconds into the video).",
-            styles['Normal']
-        ))
-    else:
-        story.append(Paragraph("No fire or smoke was detected in this video.", styles['Normal']))
-
+    story.append(Paragraph("Incident Summary", styles['Heading2']))
+    story.append(Paragraph(
+        build_narrative(first_fire_frame, first_fire_time, first_smoke_frame, first_smoke_time, df),
+        styles['Normal']
+    ))
     story.append(Spacer(1, 16))
 
     summary_data = [
@@ -292,8 +417,7 @@ def generate_pdf_report(df, first_fire_frame, first_fire_time, total_frames,
     story.append(Spacer(1, 20))
 
     for fig, caption in [(fig1, "Detection Confidence Over Time"),
-                          (fig2, "Fire vs Smoke Detections Over Time"),
-                          (fig3, "Overall Summary")]:
+                          (fig2, "Fire vs Smoke Detections Over Time")]:
         img_buffer = io.BytesIO()
         fig.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
         img_buffer.seek(0)
@@ -301,15 +425,29 @@ def generate_pdf_report(df, first_fire_frame, first_fire_time, total_frames,
         story.append(Image(img_buffer, width=6*inch, height=2.5*inch))
         story.append(Spacer(1, 14))
 
+    story.append(Spacer(1, 10))
+    story.append(Paragraph("Emergency Contacts", styles['Heading2']))
+    story.append(Paragraph(
+        f"If this event is active, evacuate the area immediately and contact the Fire Services at "
+        f"{EMERGENCY_FIRE_NUMBER} or the National Emergency Number at {EMERGENCY_GENERAL_NUMBER}.",
+        styles['Normal']
+    ))
+
     doc.build(story)
     buffer.seek(0)
     return buffer.getvalue()
+
+
 def main_app():
-    st.title(" CCTV Fire & Smoke Detection Dashboard")
-    st.write(f"Logged in as **{st.session_state.current_user}**")
-    if st.button("Logout"):
-        st.session_state.logged_in = False
-        st.rerun()
+    header_left, header_right = st.columns([6, 1])
+    with header_left:
+        st.title("CCTV Fire & Smoke Detection Dashboard")
+        st.write(f"Logged in as **{st.session_state.current_user}**")
+    with header_right:
+        st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+        if st.button("Logout", use_container_width=True):
+            st.session_state.logged_in = False
+            st.rerun()
 
     model = load_model()
     uploaded_video = st.file_uploader("Upload CCTV video", type=["mp4", "avi", "mov"])
@@ -323,6 +461,7 @@ def main_app():
             with st.spinner("Processing video... this may take a minute"):
                 results_data = process_video(video_path, model)
             display_results(results_data)
+
 
 if st.session_state.logged_in:
     main_app()
