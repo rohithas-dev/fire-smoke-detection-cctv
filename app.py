@@ -29,27 +29,17 @@ def login_page():
             background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
         }
         
-        @keyframes flicker {
-            0%, 100% { transform: scale(1) rotate(-2deg); opacity: 1; }
-            25% { transform: scale(1.08) rotate(3deg); opacity: 0.85; }
-            50% { transform: scale(0.92) rotate(-2deg); opacity: 1; }
-            75% { transform: scale(1.05) rotate(2deg); opacity: 0.9; }
-        }
-        
-        #bonfire {
-            font-size: 120px;
-            text-align: center;
-            display: block;
-            animation: flicker 1s ease-in-out infinite;
-            filter: drop-shadow(0 0 30px rgba(255, 100, 0, 0.7));
+        #bonfire-video {
+            width: 100%;
+            max-width: 320px;
+            border-radius: 12px;
+            filter: drop-shadow(0 0 30px rgba(255, 100, 0, 0.6));
             transition: opacity 0.6s ease, filter 0.6s ease;
         }
         
-        #bonfire.out {
-            animation: none;
+        #bonfire-video.out {
             opacity: 0.15;
             filter: grayscale(100%) drop-shadow(none);
-            transform: scale(0.9);
         }
         
         .login-title {
@@ -97,14 +87,18 @@ def login_page():
     left_col, right_col = st.columns([1, 1.3])
 
     with left_col:
-        st.markdown('<div id="bonfire">🔥</div>', unsafe_allow_html=True)
+        st.markdown("""
+            <video id="bonfire-video" autoplay loop muted playsinline>
+                <source src="https://raw.githubusercontent.com/rohithas-dev/fire-smoke-detection-cctv/main/fire.webm" type="video/webm">
+            </video>
+        """, unsafe_allow_html=True)
 
     with right_col:
         st.markdown('<div class="login-title">CCTV Fire & Smoke Detection</div>', unsafe_allow_html=True)
         st.markdown('<div class="login-subtitle">Real-time monitoring powered by YOLOv8</div>', unsafe_allow_html=True)
 
         username = st.text_input("Username", placeholder="Enter username")
-        password = st.text_input("Password", type="password", placeholder="Enter password", key="password_field")
+        password = st.text_input("Password", placeholder="Enter password", key="password_field")
 
         if st.button("Login"):
             if username in VALID_USERS and VALID_USERS[username] == password:
@@ -124,10 +118,16 @@ def login_page():
         const doc = window.parent.document;
         function attachListener() {
             const passwordInputs = doc.querySelectorAll('input[type="password"]');
-            const bonfire = doc.getElementById('bonfire');
-            if (passwordInputs.length > 0 && bonfire) {
-                passwordInputs[0].addEventListener('focus', () => bonfire.classList.add('out'));
-                passwordInputs[0].addEventListener('blur', () => bonfire.classList.remove('out'));
+            const video = doc.getElementById('bonfire-video');
+            if (passwordInputs.length > 0 && video) {
+                passwordInputs[0].addEventListener('focus', () => {
+                    video.classList.add('out');
+                    video.pause();
+                });
+                passwordInputs[0].addEventListener('blur', () => {
+                    video.classList.remove('out');
+                    video.play();
+                });
             } else {
                 setTimeout(attachListener, 300);
             }
