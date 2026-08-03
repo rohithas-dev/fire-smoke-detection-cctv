@@ -25,33 +25,23 @@ if "logged_in" not in st.session_state:
 def login_page():
     st.markdown("""
         <style>
-       .stApp {
-    background: #000000;
-}
-        
+        .stApp {
+            background: #000000;
+        }
+
         #bonfire-video {
-    width: 100%;
-    max-width: 320px;
-    border-radius: 12px;
-    transition: opacity 0.6s ease;
-}
+            width: 100%;
+            max-width: 450px;
+            height: 550px;
+            object-fit: cover;
+            border-radius: 12px;
+            transition: opacity 0.6s ease;
+        }
 
-#bonfire-video.out {
-    opacity: 0.15;
-}
-        
-      #bonfire-video {
-    width: 100%;
-    max-width: 450px;
-    height: 550px;
-    object-fit: cover;
-    border-radius: 12px;
-    transition: opacity 0.6s ease;
-}
+        #bonfire-video.out {
+            opacity: 0.15;
+        }
 
-#bonfire-video.out {
-    opacity: 0.15;
-}
         .login-title {
             text-align: center;
             color: #ffffff;
@@ -60,25 +50,26 @@ def login_page():
             margin-bottom: 5px;
             text-shadow: 0 0 10px rgba(255, 87, 34, 0.5);
         }
-        
+
         .login-subtitle {
             text-align: center;
             color: #a0a0c0;
             font-size: 14px;
             margin-bottom: 20px;
         }
-       div[data-testid="stTextInput"] input {
-    background-color: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 87, 34, 0.3);
-    border-radius: 8px;
-    color: black;
-}
-        
+
+        div[data-testid="stTextInput"] input {
+            background-color: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 87, 34, 0.3);
+            border-radius: 8px;
+            color: black;
+        }
+
         div[data-testid="stTextInput"] input:focus {
             border: 1px solid #ff5722;
             box-shadow: 0 0 10px rgba(255, 87, 34, 0.4);
         }
-        
+
         .stButton button {
             background: linear-gradient(135deg, #ff5722, #ff9800);
             color: white;
@@ -88,19 +79,20 @@ def login_page():
             font-weight: 600;
             width: 100%;
         }
-        
+
         label { color: #d0d0e0 !important; }
         </style>
     """, unsafe_allow_html=True)
 
     left_col, right_col = st.columns([1, 1.3])
 
-   with left_col:
+    with left_col:
         st.markdown("""
             <video id="bonfire-video" autoplay loop muted playsinline>
                 <source src="https://raw.githubusercontent.com/rohithas-dev/fire-smoke-detection-cctv/main/fire.mp4" type="video/mp4">
             </video>
         """, unsafe_allow_html=True)
+
     with right_col:
         st.markdown('<div class="login-title">CCTV Fire & Smoke Detection</div>', unsafe_allow_html=True)
         st.markdown('<div class="login-subtitle">Real-time monitoring powered by YOLOv8</div>', unsafe_allow_html=True)
