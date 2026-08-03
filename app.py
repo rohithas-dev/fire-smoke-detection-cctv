@@ -30,7 +30,7 @@ def login_page():
     st.markdown("""
         <style>
         .stApp {
-            background: radial-gradient(circle at top left, #1a1a2e 0%, #0d0d14 60%, #000000 100%);
+            background: #000000;
         }
 
         #bonfire-video {
@@ -38,49 +38,43 @@ def login_page():
             max-width: 450px;
             height: 550px;
             object-fit: cover;
-            border-radius: 16px;
-            box-shadow: 0 0 40px rgba(255, 87, 34, 0.25);
+            border-radius: 12px;
             transition: opacity 0.6s ease;
         }
-        #bonfire-video.out { opacity: 0.15; }
+
+        #bonfire-video.out {
+            opacity: 0.15;
+        }
 
         .login-title {
             text-align: center;
             color: #ffffff;
-            font-size: 32px;
-            font-weight: 800;
-            margin-bottom: 4px;
-            letter-spacing: 0.5px;
-            text-shadow: 0 0 12px rgba(255, 87, 34, 0.6);
-        }
-        .login-subtitle {
-            text-align: center;
-            color: #9a9ac0;
-            font-size: 14px;
-            margin-bottom: 22px;
+            font-size: 30px;
+            font-weight: 700;
+            margin-bottom: 5px;
+            text-shadow: 0 0 10px rgba(255, 87, 34, 0.5);
         }
 
-        div[data-testid="stForm"] {
-            background: rgba(255, 255, 255, 0.04);
-            border: 1px solid rgba(255, 87, 34, 0.25);
-            border-radius: 18px;
-            padding: 30px 34px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
-            backdrop-filter: blur(6px);
+        .login-subtitle {
+            text-align: center;
+            color: #a0a0c0;
+            font-size: 14px;
+            margin-bottom: 20px;
         }
 
         div[data-testid="stTextInput"] input {
             background-color: rgba(255, 255, 255, 0.08);
             border: 1px solid rgba(255, 87, 34, 0.3);
             border-radius: 8px;
-            color: #f2f2f2;
+            color: black;
         }
+
         div[data-testid="stTextInput"] input:focus {
             border: 1px solid #ff5722;
             box-shadow: 0 0 10px rgba(255, 87, 34, 0.4);
         }
 
-        div[data-testid="stForm"] .stButton button {
+        .stButton button {
             background: linear-gradient(135deg, #ff5722, #ff9800);
             color: white;
             border: none;
@@ -88,9 +82,7 @@ def login_page():
             padding: 10px 30px;
             font-weight: 600;
             width: 100%;
-            transition: transform 0.15s ease;
         }
-        div[data-testid="stForm"] .stButton button:hover { transform: translateY(-1px); }
 
         label { color: #d0d0e0 !important; }
         </style>
@@ -109,18 +101,16 @@ def login_page():
         st.markdown('<div class="login-title">CCTV Fire & Smoke Detection</div>', unsafe_allow_html=True)
         st.markdown('<div class="login-subtitle">Real-time monitoring powered by YOLOv8</div>', unsafe_allow_html=True)
 
-        with st.form("login_form"):
-            username = st.text_input("Username", placeholder="Enter username")
-            password = st.text_input("Password", placeholder="Enter password", type="password")
-            submitted = st.form_submit_button("Login")
+        username = st.text_input("Username", placeholder="Enter username")
+        password = st.text_input("Password", placeholder="Enter password", key="password_field")
 
-            if submitted:
-                if username in VALID_USERS and VALID_USERS[username] == password:
-                    st.session_state.logged_in = True
-                    st.session_state.current_user = username
-                    st.rerun()
-                else:
-                    st.error("Invalid username or password")
+        if st.button("Login"):
+            if username in VALID_USERS and VALID_USERS[username] == password:
+                st.session_state.logged_in = True
+                st.session_state.current_user = username
+                st.rerun()
+            else:
+                st.error("Invalid username or password")
 
         st.markdown(
             "<p style='text-align:center; color:#808090; font-size:12px; margin-top:15px;'>Demo credentials: admin / fire123</p>",
