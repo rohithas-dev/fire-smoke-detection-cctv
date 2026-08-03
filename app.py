@@ -40,11 +40,18 @@ def login_page():
     opacity: 0.15;
 }
         
-        #bonfire-video.out {
-            opacity: 0.15;
-            filter: grayscale(100%) drop-shadow(none);
-        }
-        
+      #bonfire-video {
+    width: 100%;
+    max-width: 450px;
+    height: 550px;
+    object-fit: cover;
+    border-radius: 12px;
+    transition: opacity 0.6s ease;
+}
+
+#bonfire-video.out {
+    opacity: 0.15;
+}
         .login-title {
             text-align: center;
             color: #ffffff;
