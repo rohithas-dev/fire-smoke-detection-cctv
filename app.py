@@ -520,7 +520,7 @@ def main_app():
             st.rerun()
 
     model = load_model()
-    uploaded_video = st.file_uploader("Upload CCTV video", type=["mp4", "avi", "mov"])
+    uploaded_video = st.file_uploader("Upload CCTV video", type=["mp4", "avi", "mov","jpg", "jpeg", "png"])
 
     if uploaded_video is not None:
         tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
